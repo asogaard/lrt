@@ -124,7 +124,7 @@ def main ():
         # Draw figure
         c = ap.canvas(batch=not args.show)
         for hist, name, col in zip(comb_histograms, group_names, colours):
-            c.plot(hist, linecolor=col, markercolor=col, markerstyle=20, linewidth=2, label=name)
+            c.plot(hist, linecolor=col, markercolor=col, markerstyle=20, linewidth=2, label=name, legend_option='L')
             pass
 
         c.text([signal_line(signal),
