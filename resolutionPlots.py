@@ -18,17 +18,6 @@ from common import *
 from rootplotting import ap
 from rootplotting.tools import *
 
-# Command-line arguments parser
-import argparse
-
-parser = argparse.ArgumentParser(description="Produce publication-ready resolution- and pull plots for the large-radius tracking (LRT) PUBNOTE.")
-
-parser.add_argument('--show', dest='show', action='store_const',
-                    const=True, default=False,
-                    help='Show plots (default: False)')
-parser.add_argument('--save', dest='save', action='store_const',
-                    const=True, default=False,
-                    help='Save plots (default: False)')
 
 # Main function definition.
 def main ():
@@ -116,9 +105,6 @@ def main ():
     base = 'IDPerformanceMon/LargeD0/'
     histname = base + 'ResolutionPlots/{alg}Tracks/{t}/{group}{rel}_{var}'
     
-    # Initialise legend options
-    #lo = LegendOptions([], group_names, 'L', header = 'Match prob. in:', xmin = 0.60, xmax = 0.9, ymax = 0.80 - gROOT.GetStyle("AStyle").GetTextSize() * 1.4)
-    
     # Loop all combinations of track parameter, tracking algorithm, truth particle type, resolution type, and signal process
     for var, alg, t, rel, signal in itertools.product(basic_vars, algorithms, types, rels, signals):
         
@@ -132,7 +118,7 @@ def main ():
         # Loop probability bins
         for group in groups:
             h = f.Get(histname.format(alg=alg, var=var, t=t, rel=rel, group=group))
-            h.SetDirectory(0)       # Keep in memory after file is closed.
+            h.SetDirectory(0) # Keep in memory after file is closed.
             histograms.append(h)
             pass
         

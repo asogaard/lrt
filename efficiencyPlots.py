@@ -19,17 +19,6 @@ from common import *
 from rootplotting import ap
 from rootplotting.tools import *
 
-# Command-line arguments parser
-import argparse
-
-parser = argparse.ArgumentParser(description="Produce publication-ready efficiency plots for the large-radius tracking (LRT) PUBNOTE.")
-
-parser.add_argument('--show', dest='show', action='store_const',
-                    const=True, default=False,
-                    help='Show plots (default: False)')
-parser.add_argument('--save', dest='save', action='store_const',
-                    const=True, default=False,
-                    help='Save plots (default: False)')
 
 # Main function definition.
 def main ():
