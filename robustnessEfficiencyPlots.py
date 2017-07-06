@@ -8,7 +8,7 @@ Date:   7 June 2017
 """
 
 # Basic
-import itertools
+import itertools, array
 
 # ROOT
 import ROOT
@@ -17,32 +17,40 @@ import ROOT
 from common import *
 from rootplotting import ap
 from rootplotting.tools import *
-
+from snippets.functions import displayName
 
 # Main function definition.
 def main ():
 
     # Macro-specific styles
-    ROOT.gROOT.GetStyle("AStyle").SetEndErrorSize(5.)
+    ROOT.gROOT.GetStyle("AStyle").SetEndErrorSize(.5)
 
     # Parse command-line arguments
     args = parser.parse_args()
 
     # Initialise categories for which to plot distinct curves for each histogram
     algorithms = ['Standard', 'LargeD0']
-    names      = ['Standard', 'Large-radius']
+    names      = ['Standard', 'Large radius']
     types      = ['Signal'] # ['All', 'Signal']
-    signals = ['RPV', 'Rhadron']
-    groups = ['R20mm_50mm/',
-              'R100mm_150mm/',
-              'R200mm_300mm/',
+    signals = ['RPV', 'Rhadron'] 
+    groups = ['R10mm_30mm/',
+              'R30mm_100mm/',
+              'R100mm_300mm/',
               ]
+    #groups = ['R20mm_50mm/',
+    #          'R100mm_150mm/',
+    #          'R200mm_300mm/',
+    #          ]
 
-    group_names = [ '[%s]' % grp[1:-1].replace('_', ', ').replace('p', '.') for grp in groups ]
+    group_names = [ '[%s]' % grp[1:-1].replace('_', ', ').replace('p', '.').replace('mm', ' mm') for grp in groups ]
+    # @TEMP: Fix type in histogram names: 30mm_300mm -> 100mm_300mm
+    #group_names = [gn.replace('30mm, 300mm', '100mm, 300mm') for gn in group_names]
 
     # Initialise list of histograms to be plotted 
     base = 'IDPerformanceMon/LargeD0/'
     histname = base + 'EffPlots/{alg}Tracks/{t}/{group}trackeff_vs_mu'
+
+    edges = [0, 10, 15, 20, 25, 30, 40]
 
     # Loop all combinations of truth particle type and signal process
     for t, signal in itertools.product(types, signals):
@@ -61,8 +69,11 @@ def main ():
             for group in groups:
                 h = f.Get(histname.format(alg=alg, t=t, group=group))
                 h.SetDirectory(0) # Keep in memory after file is closed.
-                h.RebinX(2)
-                histograms.append(h)
+                #h.RebinX(2)
+                newname = h.GetName() + "_rebinned_" + group + "_" + alg
+                hn = h.Rebin(len(edges)-1, newname, array.array('d',edges))
+                #histograms.append(h)
+                histograms.append(hn)
                 pass
             pass
         
@@ -74,23 +85,22 @@ def main ():
         # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
         # Draw figure
-        c = ap.canvas(batch=not args.show)
+        c = ap.canvas(batch=not args.show, size=(700, 500))
         for i, alg in enumerate(algorithms):
             N = len(group_names)
             N1, N2 = i * N, (i + 1) * N
             for hist, name, col in zip(histograms[N1:N2], group_names, colours):
-                c.plot(hist, linecolor=col, markercolor=col, markerstyle=4*i+20, linewidth=2, linestyle=i+1, label=name if i == 0 else None, legend_option='L')
+                c.plot(hist, linecolor=col, markercolor=col, markerstyle=4*i+20, linewidth=2, linestyle=i+1, label=name if i == 0 else None)
                 pass
             pass
 
-        c.text([signal_line(signal),
-                "Fiducial selection applied",
-                ] + (["%s particles" % t] if t != 'Signal' else []),
-               qualifier="Simulation Internal")
-        c.legend(header="R_{prod.} in:", categories=[(name, {'linestyle': i+1, 'markerstyle': 4*i+20, 'option': 'PL', 'linewidth': 2}) for i, name in enumerate(names)])
+        c.text([signal_line(signal)]
+               + (["%s particles" % t] if t != 'Signal' else []),
+               qualifier=qualifier)
+        c.legend(header=displayName('r') + " in:", categories=[(name, {'linestyle': i+1, 'markerstyle': 4*i+20, 'option': 'PL', 'linewidth': 2}) for i, name in enumerate(names)], width=0.28)
         c.xlabel("#mu")
-        c.ylabel("Inclusive reconstruction efficiency")
-        c.padding(0.55)
+        c.ylabel("Reconstruction efficiency")
+        c.ylim(0, 1.8)
 
         # Show/save
         savename = '_'.join([signal] + histname.format(alg='', t=t, group='').split('/')[2:]) + '.pdf'
@@ -106,7 +116,8 @@ def main ():
         for h1, h2 in zip(histograms[:len(groups)], histograms[len(groups):]):
             # h1: standard | h2: large radius
             ax = h1.GetXaxis()
-            h_comb = ROOT.TProfile('h_comb', "", ax.GetNbins(), ax.GetXmin(), ax.GetXmax())
+            h_comb = h1.Clone('h_comb')#ROOT.TProfile('h_comb', "", ax.GetNbins(), ax.GetXmin(), ax.GetXmax())
+            h_comb.Reset()
             for bin in range(1, h1.GetXaxis().GetNbins() + 1):
                 N_total = int(h1.GetBinEntries(bin)) # == h2.GetBinEntries(bin)
                 N_1 = int(h1.GetBinContent(bin) * N_total)
@@ -122,20 +133,19 @@ def main ():
 
 
         # Draw figure
-        c = ap.canvas(batch=not args.show)
-        for hist, name, col in zip(comb_histograms, group_names, colours):
-            c.plot(hist, linecolor=col, markercolor=col, markerstyle=20, linewidth=2, label=name, legend_option='L')
+        c = ap.canvas(batch=not args.show, size=(700, 500))
+        for ihist, (hist, name, col) in enumerate(zip(comb_histograms, group_names, colours)):
+            c.plot(hist, linecolor=col, markercolor=col, markerstyle=20+ihist, linestyle=1+ihist, linewidth=2, label=name)
             pass
 
-        c.text([signal_line(signal),
-                "Fiducial selection applied",
-                ] + (["%s particles" % t] if t != 'Signal' else [])
-               + ["All tracks"],
-               qualifier="Simulation Internal")
-        c.legend(header="R_{prod.} in:")
+        c.text([signal_line(signal)]
+               + (["%s particles" % t] if t != 'Signal' else [])
+               + ["Large radius and standard tracks"],
+               qualifier=qualifier)
+        c.legend(header=displayName('r') + " in:", width=0.28)
         c.xlabel("#mu")
-        c.ylabel("Inclusive reconstruction efficiency")
-        c.padding(0.5)
+        c.ylabel("Reconstruction efficiency")
+        c.ylim(0, 1.8)
 
         # Show/save
         savename = '_'.join([signal] + histname.format(alg='Combined', t=t, group='').split('/')[2:]) + '.pdf'

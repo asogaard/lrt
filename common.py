@@ -33,9 +33,59 @@ def track_line (t, name):
         return 'Signal {name} tracks'.format(name = name.lower())
     return '{name} tracks'.format(name = name)
 
-# Colours
-colours = [ROOT.kViolet + 7, ROOT.kAzure + 7, ROOT.kTeal, ROOT.kSpring - 2, ROOT.kOrange - 3, ROOT.kPink]
+#qualifier = "Simulation Preliminary"
+qualifier = "Simulation Internal"
+
+# Colours (pretty)
+colours_pretty = [ROOT.kViolet + 7, ROOT.kAzure + 7, ROOT.kTeal, ROOT.kSpring - 2, ROOT.kOrange - 3, ROOT.kPink]
+# Colours (ugly; for note)
+colours = [ROOT.kRed, ROOT.kBlue, ROOT.kBlack, ROOT.kGreen, ROOT.kViolet, ROOT.kCyan, ROOT.kOrange]
 
 # Low-stats, using new RPV sample with updated fiducial selection
-filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-06-06//output_{signal}.root'
+#filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-06-06/output_{signal}.root'
+
+# High-stats
+#filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-06-07/output_{signal}.root'
+
+# Low-stats, with track pT > 1000 MeV
+#filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-06-08/output_{signal}.root'
     
+# High-stats, new RPV signal definition
+#filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-06-09/output_{signal}.root'
+
+# High-stats, better resolution robustness binning
+#filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-06-10/output_{signal}.root'
+
+# High-stats, only signal muons for RPV
+#filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-06-15/output_{signal}.root'
+
+# High-stats, same R-hadron sample as Margaret
+#filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-06-17/output_{signal}.root'
+
+# High-stats, smaller pT-range for robustness plots
+#filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-06-18/output_{signal}.root'
+
+# High-stats, impose pT > 1000 MeV
+#filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-06-19/output_{signal}.root'
+
+# High-stats, better Rprod binning for robustness studies
+#filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-06-21/output_{signal}.root'
+
+# High-stats, better pT binning for robustness studies for RPV
+#filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-06-22/output_{signal}.root'
+
+# High-stats, better truthprodR range
+#filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-06-22b/output_{signal}.root'
+
+# High-stats, better q/p resolution robustness binning
+#filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-06-24/output_{signal}.root'
+#filename = '/afs/cern.ch/user/a/asogaard/Qualification/validation-rel21-2017-01-24/run/2017-06-24/output_{signal}.root'
+
+# High-stats, 10k events for R-hadron
+#filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-06-30/output_{signal}.root'
+
+# High-stats, pT cut applied to truth rather than tracks
+#filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-07-05/output_{signal}.root'
+
+# High-stats, pT-binned resolution robustness
+filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-07-06/output_{signal}.root'

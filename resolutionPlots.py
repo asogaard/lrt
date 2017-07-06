@@ -17,7 +17,7 @@ import ROOT
 from common import *
 from rootplotting import ap
 from rootplotting.tools import *
-
+from snippets.functions import displayName, displayUnit, displayNameUnit
 
 # Main function definition.
 def main ():
@@ -30,7 +30,7 @@ def main ():
 
     # Initialise categories for which to plot distinct curves for each histogram
     algorithms = ['Standard', 'LargeD0']
-    names      = ['Standard', 'Large-radius']
+    names      = ['Standard', 'Large radius']
     signals    = ['RPV', 'Rhadron']
     rels       = ['res', 'resRel', 'pull']
     
@@ -55,6 +55,14 @@ def main ():
             h = f.Get(histname.format(alg=alg, var=var, rel=rel))
             h.SetDirectory(0) # Keep in memory after file is closed.
             h.GetXaxis().SetNdivisions(507)
+            h.GetYaxis().SetNdivisions(507)
+            ax = h.GetXaxis()
+            rebin = 1
+            if signal == 'Rhadron':
+                rebin = 2
+                pass
+            h.Rebin(rebin)
+            ax.SetRangeUser(ax.GetXmin() / 10., ax.GetXmax() / 10.)
             histograms.append(h)
             pass
         
@@ -62,15 +70,20 @@ def main ():
         f.Close()
         
         # Draw figure
-        c = ap.canvas(batch=not args.show)
-        for hist, name, col in zip(histograms, names, colours):
-            c.hist(hist, linecolor=col, linewidth=3, label=name, normalise=True)
+        c = ap.canvas(batch=not args.show, size=(700, 500))
+        for ihist, (hist, name, col) in enumerate(zip(histograms, names, colours)):
+            c.hist(hist, linecolor=col, linewidth=3, linestyle=1+ihist, normalise=True, option='HIST')#, label=name + " tracks", normalise=True, option='HIST E2')
+            c.hist(hist, linecolor=col, fillcolor=col, alpha=0.4, normalise=True, option='E2')
             pass
-        c.text([signal_line(signal),
-                "Fiducial selection applied"],
-               qualifier="Simulation Internal")
-        c.legend(header="Track category:")
-        c.ylabel("Tracks (normalised)")
+        c.text([signal_line(signal)],
+               qualifier=qualifier)
+        c.legend(width=0.28, categories=[
+                (names[0] + " tracks", {'linecolor':colours[0], 'linewidth':3, 'linestyle':1, 'fillcolor':colours[0], 'alpha':0.4, 'option': 'FL'}),
+                (names[1] + " tracks", {'linecolor':colours[1], 'linewidth':3, 'linestyle':2, 'fillcolor':colours[1], 'alpha':0.4, 'option': 'FL'})
+                #('Statistical uncert.', {'fillcolor': ROOT.kGray, 'linecolor': ROOT.kGray + 1, 'option': 'F'})
+                ])
+        c.xlabel("%s^{reco.} - %s^{truth} [%s]" % (displayName(var), displayName(var), displayUnit(var)))
+        c.ylabel("Fraction of tracks")
 
         # Show/save
         savename = '_'.join([signal] + histname.format(alg='Combined', var=var, rel=rel).split('/')[2:]) + '.pdf'
@@ -84,7 +97,7 @@ def main ():
     
     # Initialise categories for which to plot distinct curves for each histogram
     algorithms = ['Standard', 'LargeD0']
-    names      = ['Standard', 'Large-d_{0}']
+    names      = ['Standard', 'Large radius']
     types      = ['All', 'Signal']
     signals    = ['RPV', 'Rhadron']
     rels = ['res', 'resRel', 'pull']
@@ -106,7 +119,7 @@ def main ():
     histname = base + 'ResolutionPlots/{alg}Tracks/{t}/{group}{rel}_{var}'
     
     # Loop all combinations of track parameter, tracking algorithm, truth particle type, resolution type, and signal process
-    for var, alg, t, rel, signal in itertools.product(basic_vars, algorithms, types, rels, signals):
+    for var, (alg, name), t, rel, signal in itertools.product(basic_vars, zip(algorithms, names), types, rels, signals):
         
         # Open file from which to read histograms.
         f = ROOT.TFile(filename.format(signal=signal), 'READ')
@@ -116,9 +129,10 @@ def main ():
         histograms = list()
         
         # Loop probability bins
-        for group in groups:
+        for igroup, group in enumerate(groups):
             h = f.Get(histname.format(alg=alg, var=var, t=t, rel=rel, group=group))
             h.SetDirectory(0) # Keep in memory after file is closed.
+            h.Rebin(10) # 10
             histograms.append(h)
             pass
         
@@ -126,16 +140,19 @@ def main ():
         f.Close()
         
         # Draw figure
-        c = ap.canvas(batch=not args.show)
-        for hist, name, col in zip(histograms, group_names, colours):
-            c.hist(hist, linecolor=col, linewidth=3, label=name, normalise=True, option='HIST ' + ('C' if t == 'All' else ''))
+        c = ap.canvas(batch=not args.show, size=(700, 500))
+        for ihist, (hist, grp, col) in enumerate(zip(histograms, group_names, colours_pretty)):
+            c.hist(hist, linecolor=col, linewidth=3, linestyle=1+ihist, label=grp, normalise=True)
             pass
         c.text([signal_line(signal),
-                "Fiducial selection applied",
-                ] + (["%s particles" % t] if t != 'Signal' else []),
-               qualifier="Simulation Internal")
-        c.legend(header="Match prob. in:")
-        c.ylabel("Tracks (normalised)")
+                name + " tracks"]
+               + (["%s particles" % t] if t != 'Signal' else []),
+               qualifier=qualifier)
+        c.legend(header="Match prob. in:", width=0.28, ymax=0.872)
+        c.xlabel("%s^{reco.} - %s^{truth} [%s]" % (displayName(var), displayName(var), displayUnit(var)))
+        c.ylabel("Fraction of tracks")
+        c.padding(0.40)
+        c.log()
 
         # Show/save
         savename = '_'.join([signal] + histname.format(alg=alg, var=var, t=t, rel=rel, group='').split('/')[2:]) + '.pdf'

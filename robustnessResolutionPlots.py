@@ -46,6 +46,8 @@ def main ():
                     'Rprod_100mm_300mm/',],
         }
 
+    ylabel = "Standard deviation of the error on %s"
+
     """
     groups = [
         'Rprod_10mm_30mm/',
@@ -59,9 +61,9 @@ def main ():
         """
     deps = ['mu', 'pt']
     
-    group_names = {signal: [ '[%s]' % grp[6:-1].replace('_', ', ').replace('p', '.') for grp in groups[signal] ] for signal in signals}
+    group_names = {signal: [ '[%s]' % grp[6:-1].replace('_', ', ').replace('p', '.').replace('mm', ' mm') for grp in groups[signal] ] for signal in signals}
     # @TEMP: Fix type in histogram names: 30mm_300mm -> 100mm_300mm
-    group_names = {signal: [gn.replace('30mm, 300mm', '100mm, 300mm') for gn in group_names[signal]] for signal in signals}
+    #group_names = {signal: [gn.replace('30mm, 300mm', '100mm, 300mm') for gn in group_names[signal]] for signal in signals}
     
     # Initialise variable versus which to plot the physics efficiency
     basic_vars = ['theta', 'phi', 'd0', 'z0', 'qOverP']
@@ -145,17 +147,22 @@ def main ():
                         if signal == 'Rhadron':
                             edges = np.logspace(np.log10(1), np.log10(50), 8 - 2 * igroup + 1, endpoint=True)
                         else:
-                            edges = np.linspace(0, 400, 8 - 2 * igroup + 1, endpoint=True)
+                            edges = np.linspace(0, 400, max(8 - 4 * igroup + 1, 2), endpoint=True)
+                            #edges -= 0.2 # @TEMP: FIX FOR NICE BIN EDGES
                             edges[0] = 1
                             pass
            
-                        print edges
                         bin_pairs['pt'].append(zip(edges[:-1], edges[1:]))
                         ax = h.GetXaxis()
-                        print ax.GetXmin(), ax.GetXmax(), ax.GetNbins()
                         bin_pairs['pt'][igroup] = [ (ax.FindBin(pair[0]), ax.FindBin(pair[1])) for pair in bin_pairs['pt'][igroup] ]
-                        print bin_pairs
-                        return
+                        
+                        # Ensure there is no overlap between bins
+                        for idx in range(len(bin_pairs['pt'][igroup]) - 1):
+                            if bin_pairs['pt'][igroup][idx][1] >= bin_pairs['pt'][igroup][idx+1][0]:
+                                bin_pairs['pt'][igroup][idx+1] = (bin_pairs['pt'][igroup][idx][1]+1, bin_pairs['pt'][igroup][idx+1][1])
+                                pass
+                            pass
+
                         if signal == 'RPV':
                             bin_pairs['pt'][igroup][-1] = (bin_pairs['pt'][igroup][-1][0], nx)
                             pass
@@ -203,9 +210,9 @@ def main ():
                         if dep == 'mu' and igroup > 0:
                             proj.RebinX(2*igroup)
                             pass
-                        if dep == 'pt' and var == 'qOverP' and igroup > 0:
-                            proj.RebinX(2*igroup)
-                            pass
+                        #if dep == 'pt' and var == 'qOverP' and igroup > 0:
+                        #    proj.RebinX(2*igroup)
+                        #    pass
                         
                         # Get graph variables
                         x  = 0.5 * (ax.GetBinCenter(pair[0]) + ax.GetBinCenter (pair[1]))
@@ -276,8 +283,49 @@ def main ():
                             # Return
                             return result
                         
-                        par, err, _, _ = getCoreRMS(proj, sigma=sigma, fix_mean=0)
+                        #par, err, _, _ = getCoreRMS(proj, sigma=sigma, fix_mean=0)
+
+                        # Get "core" std.dev. and assoc. error
+                        def getCoreStd (h, sigma=5, fix_mean=None):
+                            """ Method for getting the std.dev. in the central +/- sigma of a distribution. """
+                            
+                            # Check(s)
+                            # ...
+                            
+                            # Book keeping
+                            old_std = 0          # RMS from pervious iteration
+                            std     = h.GetXaxis().GetBinWidth(1) * 2 # RMS from current iteration
+                            it = 0                 # Iteration counter, to avoid endless loop
+                            fit = ROOT.TF1('fit', 'gaus')
+                            mean  = h.GetMean() if fix_mean is None else fix_mean
+
+                            # Perform iterations
+                            while abs(std - old_std) > 0 and it < 100:
+                                
+                                # Update axis limits
+                                fit.SetRange(mean - sigma * std, mean + sigma * std)
+                                h.Fit('fit', 'QR0')
+                                
+                                # Update RMSs
+                                old_std  = std
+                                std      = fit.GetParameter(2)
+                                it += 1
+                                pass
+                            
+                            # Return
+                            return fit.GetParameter(2), fit.GetParError(2), fit
                         
+                        par, err, fit = getCoreStd(proj, sigma=sigma, fix_mean=0)
+                        par2p5, _, _  = getCoreStd(proj, sigma=2.5, fix_mean=0)
+                        par2p0, _, _  = getCoreStd(proj, sigma=2.0, fix_mean=0)
+
+                        syst = max(abs(par2p5 - par), abs(par2p0 - par))
+
+                        if var == 'd0' and dep == 'mu':
+                            print "==> err, syst:", err, syst
+                            pass
+                        err = np.sqrt( np.square(err) + np.square(syst) )
+
                         # Store data point
                         if par > 0.:
                             xs .append(x)
@@ -294,14 +342,24 @@ def main ():
                         pair = bin_pairs[dep][igroup][ibin]
                         
                         # Save projections slices
+                        '''
                         c_proj = ap.canvas(batch=not args.show)
-                        rms2sig, err2sig, sigma2_min, sigma2_max = getCoreRMS(proj, sigma=2, fix_mean=0)
-                        rms3sig, err3sig, sigma3_min, sigma3_max = getCoreRMS(proj, sigma=3, fix_mean=0)
+                        #rms2sig, err2sig, sigma2_min, sigma2_max = getCoreRMS(proj, sigma=2, fix_mean=0)
+                        #rms3sig, err3sig, sigma3_min, sigma3_max = getCoreRMS(proj, sigma=3, fix_mean=0)
+                        rms2sig, err2sig, fit2 = getCoreStd(proj, sigma=2, fix_mean=0)
+                        rms3sig, err3sig, fit3 = getCoreStd(proj, sigma=3, fix_mean=0)
+                        #fit.SetRange(-3*rms3sig,3*rms3sig)
                         c_proj.hist(proj)
-                        c_proj.xline(sigma2_min, text='-2#sigma', linecolor=ROOT.kBlue)
-                        c_proj.xline(sigma2_max, text='+2#sigma', linecolor=ROOT.kBlue)
-                        c_proj.xline(sigma3_min, text='-3#sigma', linecolor=ROOT.kGreen)
-                        c_proj.xline(sigma3_max, text='+3#sigma', linecolor=ROOT.kGreen)
+                        c_proj._bare().cd()
+                        fit2.SetLineColor(ROOT.kBlue)
+                        fit3.SetLineColor(ROOT.kGreen)
+                        c_proj.xline(-2 * rms2sig, text='-2#sigma', linecolor=ROOT.kBlue)
+                        c_proj.xline(+2 * rms2sig, text='+2#sigma', linecolor=ROOT.kBlue)
+                        c_proj.xline(-3 * rms3sig, text='-3#sigma', linecolor=ROOT.kGreen)
+                        c_proj.xline(+3 * rms3sig, text='+3#sigma', linecolor=ROOT.kGreen)
+                        fit2.Draw('SAME')
+                        fit3.Draw('SAME')
+                        c_proj.xlim(-8*rms3sig, +8*rms3sig)
                         c_proj.xlabel(displayNameUnit(var))
                         c_proj.ylabel("Tracks")
                         c_proj.text([displayName('r') + " #in  " + group_names[signal][igroup],
@@ -315,7 +373,7 @@ def main ():
                                     qualifier=qualifier)
                         
                         if args.save: c_proj.save('plots/%s_RobustnessResolution_slice__%s_vs_%s__%s_%d_%d.pdf' % (signal, var, dep, alg, igroup, ibin))
-
+                        '''
                         pass
                     
                     # Create profile graph from points
@@ -345,10 +403,16 @@ def main ():
             
             # Draw figure
             c = ap.canvas(batch=not args.show, size=(700, 500))
+            c_temp = ap.canvas(batch=True)
             for i, alg in enumerate(algorithms):
                 N = len(group_names[signal])
                 N1, N2 = i * N, (i + 1) * N
                 for hist, name, col in zip(histograms[N1:N2], group_names[signal], colours):
+                    # Create x-axis for graph
+                    hist = c_temp.graph(hist)
+                    c_temp._bare().cd()
+                    ROOT.gPad.Update()
+                    # Draw graph with x-axis
                     c.graph(hist, linecolor=col, markercolor=col, markerstyle=4*i+20, linewidth=2, linestyle=i+1, label=name if i == 0 else None)
                     pass
                 pass
@@ -362,7 +426,7 @@ def main ():
                    h.GetXaxis().GetBinUpEdge (bin_pairs[dep][0][-1][1]))
             
             c.xlabel(displayNameUnit(dep))
-            c.ylabel('Residuals RMS, %s' % (displayNameUnit(var)))
+            c.ylabel(ylabel % displayNameUnit(var))
             if dep == 'pt':
                 c.logy()
                 pass
@@ -388,11 +452,18 @@ def main ():
                 #xes = [w/2. for w in ws]
                 xels = [w for w in wls]
                 xehs = [w for w in whs]
-                ys, yes, _, _ = zip(*[ getCoreRMS(proj, sigma=sigma, fix_mean=0) for proj in projs ])
+                #ys, yes, _, _ = zip(*[ getCoreRMS(proj, sigma=sigma, fix_mean=0) for proj in projs ])
+                ys, yes, _ = zip(*[ getCoreStd(proj, sigma=sigma, fix_mean=0) for proj in projs ])
                 #yes = list(yes)
                 #for idx, proj in enumerate(projs):
                 #    yes[idx] = np.sqrt( np.square(yes[idx]) + np.square(proj.GetXaxis().GetBinWidth(1)) )
                 #pass
+
+                ys2p5, _, _  = zip(*[ getCoreStd(proj, sigma=2.5, fix_mean=0) for proj in projs ])
+                ys2p0, _, _  = zip(*[ getCoreStd(proj, sigma=2.0, fix_mean=0) for proj in projs ])
+
+                syst = np.maximum(np.abs(np.array(ys2p5) - np.array(ys)), np.abs(np.array(ys2p0) - np.array(ys)))
+                yes = np.sqrt( np.square(np.array(yes)) + np.square(syst) )
 
                 graph = ROOT.TGraphAsymmErrors(len(xs), array('d', xs),
                                                array('d', ys),
@@ -406,32 +477,47 @@ def main ():
                 comb_histograms.append(graph)
 
                 # Draw projection slice
+                '''
                 #for ibin, (proj, x, w) in enumerate(zip(projs, xs, ws)):
                 for ibin, (proj, x, wl, wh) in enumerate(zip(projs, xs, wls, whs)):
                     c_proj = ap.canvas(batch=not args.show)
-                    rms2sig, err2sig, sigma2_min, sigma2_max = getCoreRMS(proj, sigma=2, fix_mean=0)
-                    rms3sig, err3sig, sigma3_min, sigma3_max = getCoreRMS(proj, sigma=3, fix_mean=0)
+                    #rms2sig, err2sig, sigma2_min, sigma2_max = getCoreRMS(proj, sigma=2, fix_mean=0)
+                    #rms3sig, err3sig, sigma3_min, sigma3_max = getCoreRMS(proj, sigma=3, fix_mean=0)
+                    rms2sig, err2sig, fit2  = getCoreStd(proj, sigma=2, fix_mean=0)
+                    rms3sig, err3sig, fit3 = getCoreStd(proj, sigma=3, fix_mean=0)
                     c_proj.hist(proj)
-                    c_proj.xline(sigma2_min, text='-2#sigma', linecolor=ROOT.kBlue)
-                    c_proj.xline(sigma2_max, text='+2#sigma', linecolor=ROOT.kBlue)
-                    c_proj.xline(sigma3_min, text='-3#sigma', linecolor=ROOT.kGreen)
-                    c_proj.xline(sigma3_max, text='+3#sigma', linecolor=ROOT.kGreen)
+                    c_proj._bare().cd()
+                    #fit.SetRange(-3*rms3sig,3*rms3sig)
+                    fit2.SetLineColor(ROOT.kBlue)
+                    fit3.SetLineColor(ROOT.kGreen)
+                    #c_proj.xline(sigma2_min, text='-2#sigma', linecolor=ROOT.kBlue)
+                    #c_proj.xline(sigma2_max, text='+2#sigma', linecolor=ROOT.kBlue)
+                    #c_proj.xline(sigma3_min, text='-3#sigma', linecolor=ROOT.kGreen)
+                    #c_proj.xline(sigma3_max, text='+3#sigma', linecolor=ROOT.kGreen)
+                    c_proj.xline(-2 * rms2sig, text='-2#sigma', linecolor=ROOT.kBlue)
+                    c_proj.xline(+2 * rms2sig, text='+2#sigma', linecolor=ROOT.kBlue)
+                    c_proj.xline(-3 * rms3sig, text='-3#sigma', linecolor=ROOT.kGreen)
+                    c_proj.xline(+3 * rms3sig, text='+3#sigma', linecolor=ROOT.kGreen)
+                    fit2.Draw('SAME')
+                    fit3.Draw('SAME')
                     c_proj.xlabel(displayNameUnit(var))
                     c_proj.ylabel("Tracks")
+                    c_proj.xlim(-8*rms3sig, +8*rms3sig)
                     c_proj.text([displayName('r') + " #in  " + group_names[signal][igroup],
                                  signal_line(signal) + ' / Combined LRT and standard',
                                  ] +
                                 ["%s #in  [%.1f, %.1f] %s" % (displayName(dep), 
                                                               #x - w/2.,
                                                               #x + w/2.,
-                                                              x - wl/2.,
-                                                              x + wh/2.,
+                                                              x - wl,
+                                                              x + wh,
                                                               displayUnit(dep))] +
                                 ["Tracks: %d (%d)" % (proj.Integral(), proj.Integral(0, proj.GetXaxis().GetNbins() + 1))],
                                 qualifier=qualifier)
                     
                     if args.save: c_proj.save('plots/%s_RobustnessResolution_slice__%s_vs_%s__%s_%d_%d.pdf' % (signal, var, dep, 'Combined', igroup, ibin))
                     pass
+                    '''
                 pass
             
             # Draw figure
@@ -445,12 +531,16 @@ def main ():
                    + (["%s particles" % t] if t != 'Signal' else []),
                    qualifier=qualifier)
             c.legend(header=displayName('r') + " in:", width=0.28)
-            c.padding(0.50)
+            if dep == 'pt':
+                c.padding(0.50)
+            else:
+                c.padding(0.60)
+                pass
             c.xlim(h.GetXaxis().GetBinLowEdge(bin_pairs[dep][0] [0][0]),
                    h.GetXaxis().GetBinUpEdge (bin_pairs[dep][0][-1][1]))
 
             c.xlabel(displayNameUnit(dep))
-            c.ylabel('Residuals RMS, %s' % (displayNameUnit(var)))
+            c.ylabel(ylabel % displayNameUnit(var))
             if dep == 'pt':
                 c.logy()
                 pass
@@ -463,7 +553,7 @@ def main ():
             pass # end: loop signals
 
 
-        # Profile for STD and LRT combined for both Rhadron and RPB
+        # Profile for STD and LRT combined for both Rhadron and RPV
         # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
         c = ap.canvas(batch=not args.show, size=(700, 500))
@@ -478,7 +568,11 @@ def main ():
         c.legend(header=displayName('r') + " in:", width=0.28, categories=[
                 (signal_line(signal), {'linestyle': 2-i, 'markerstyle': 24-4*i, 'option': 'PL'}) for i, signal in enumerate(reversed(signals))
                 ])
-        c.padding(0.50)
+        if dep == 'pt':
+            c.padding(0.35)
+        else:
+            c.padding(0.45)
+            pass
 
         if dep == 'pt':
             c.xlim(1., 400.)
@@ -486,7 +580,7 @@ def main ():
             c.xlim(0.,  40.)
             pass
         c.xlabel(displayNameUnit(dep))
-        c.ylabel('Residuals RMS, %s' % (displayNameUnit(var)))
+        c.ylabel(ylabel % displayNameUnit(var))
         if dep == 'pt':
             c.logy()
             c.logx()
