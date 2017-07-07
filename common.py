@@ -33,8 +33,8 @@ def track_line (t, name):
         return 'Signal {name} tracks'.format(name = name.lower())
     return '{name} tracks'.format(name = name)
 
-#qualifier = "Simulation Preliminary"
-qualifier = "Simulation Internal"
+qualifier = "Simulation Preliminary"
+#qualifier = "Simulation Internal"
 
 # Colours (pretty)
 colours_pretty = [ROOT.kViolet + 7, ROOT.kAzure + 7, ROOT.kTeal, ROOT.kSpring - 2, ROOT.kOrange - 3, ROOT.kPink]
@@ -87,5 +87,8 @@ colours = [ROOT.kRed, ROOT.kBlue, ROOT.kBlack, ROOT.kGreen, ROOT.kViolet, ROOT.k
 # High-stats, pT cut applied to truth rather than tracks
 #filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-07-05/output_{signal}.root'
 
-# High-stats, pT-binned resolution robustness
-filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-07-06/output_{signal}.root'
+# High-stats, pT-binned resolution robustness (RPV)
+#filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-07-06/output_{signal}.root'
+
+# High-stats, pT-binned resolution robustness (R-hadron)
+filename = '/eos/atlas/user/a/asogaard/Qualification/validation/2017-07-07/output_{signal}.root'
