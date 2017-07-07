@@ -21,6 +21,37 @@ from rootplotting.tools import *
 from snippets.functions import displayNameUnit, displayName, displayUnit
 
 
+# Get "core" std.dev. and assoc. error
+def getCoreStd (h, sigma=5, fix_mean=None):
+    """ Method for getting the std.dev. in the central +/- sigma of a distribution. """
+    
+    # Check(s)
+    # ...
+    
+    # Book keeping
+    old_std = 0          # RMS from pervious iteration
+    std     = h.GetXaxis().GetBinWidth(1) * 2 # RMS from current iteration
+    it = 0                 # Iteration counter, to avoid endless loop
+    fit = ROOT.TF1('fit', 'gaus')
+    mean  = h.GetMean() if fix_mean is None else fix_mean
+    
+    # Perform iterations
+    while abs(std - old_std) > 0 and it < 100:
+        
+        # Update axis limits
+        fit.SetRange(mean - sigma * std, mean + sigma * std)
+        h.Fit('fit', 'QR0')
+        
+        # Update RMSs
+        old_std  = std
+        std      = fit.GetParameter(2)
+        it += 1
+        pass
+    
+    # Return
+    return fit.GetParameter(2), fit.GetParError(2), fit
+                        
+
 # Main function definition.
 def main ():
 
@@ -48,22 +79,9 @@ def main ():
 
     ylabel = "Standard deviation of the error on %s"
 
-    """
-    groups = [
-        'Rprod_10mm_30mm/',
-        'Rprod_30mm_100mm/',
-        'Rprod_30mm_300mm/',
-        #'Rprod_20mm_50mm/',
-        #'Rprod_100mm_150mm/',
-        #'Rprod_200mm_300mm/',
-        #'',
-        ]
-        """
     deps = ['mu', 'pt']
     
     group_names = {signal: [ '[%s]' % grp[6:-1].replace('_', ', ').replace('p', '.').replace('mm', ' mm') for grp in groups[signal] ] for signal in signals}
-    # @TEMP: Fix type in histogram names: 30mm_300mm -> 100mm_300mm
-    #group_names = {signal: [gn.replace('30mm, 300mm', '100mm, 300mm') for gn in group_names[signal]] for signal in signals}
     
     # Initialise variable versus which to plot the physics efficiency
     basic_vars = ['theta', 'phi', 'd0', 'z0', 'qOverP']
@@ -88,6 +106,190 @@ def main ():
         if var == 'z0':     return 1.2 * 1
         if var == 'qOverP': return 0.020
         return 0.01
+
+
+    # pT-binned RMS profiles
+    # --------------------------------------------------------------------------
+
+    histograms = dict()
+
+    ptgroups = [
+        'pT_1GeV_3GeV/',
+        'pT_10GeV_30GeV/',
+        ]
+
+    ptgroup_names = [ '[%s]' % grp[3:-1].replace('_', ', ').replace('p', '.').replace('GeV', ' GeV') for grp in ptgroups ]
+
+    f = ROOT.TFile(filename.format(signal='Rhadron'), 'READ')
+    ROOT.TH2.AddDirectory(False)
+
+    # Create canvas
+    c      = ap.canvas(batch=not args.show, size=(700, 500))
+    c_temp = ap.canvas(batch=True)
+
+    # Loop Rprod bins
+    for igroup, (group, groupname) in enumerate(zip(groups['Rhadron'], group_names['Rhadron'])):
+        print group, '(%s)' % groupname
+
+        # Loop pT bins
+        for ipt, (ptgroup, ptgroupname) in enumerate(zip(ptgroups, ptgroup_names)):
+            print "--", ptgroup, '(%s)' % ptgroup_names
+            hist = None
+
+            # Loop tracking algorithms; add 
+            for alg in algorithms:
+                hn = base + 'ResolutionPlots/{alg}Tracks/Signal/{group}{ptgroup}res_d0_vs_mu'.format(alg=alg, group=group, ptgroup=ptgroup)
+                h = f.Get(hn)
+                h.SetDirectory(0)
+                if hist is None:
+                    hist = h.Clone(h.GetName() + '_clone')
+                else:
+                    hist.Add(h)
+                    pass
+                pass
+
+            # Define bin edges
+            if igroup < 2:
+                pairs = [
+                    (1,2), #  5 - 10
+                    (3,3), # 10 - 15
+                    (4,4), # 15 - 20
+                    (5,5), # 20 - 25
+                    (6,6), # 25 - 30
+                    (7,8), # 30 - 40
+                    ]
+            else:
+                pairs = [
+                    (1,3), #  0 - 15
+                    (4,5), # 15 - 25
+                    (6,8), # 25 - 40
+                    ]
+                pass
+
+            # Initialise graph point lists
+            xs, ys, xels, xehs, yes = list(), list(), list(), list(), list()
+            
+            # Loop edge pairs to get projection
+            for ibin, pair in enumerate(pairs):
+                
+                # Get and fit projection
+                proj = hist.ProjectionY('_py', *pair)
+                ax = hist.GetXaxis()
+
+                # Clean-up (?) -- overflow bins
+                nx = proj.GetXaxis().GetNbins()
+                proj.SetBinContent(0,      0)
+                proj.SetBinContent(nx + 1, 0)
+                
+                # Rebin (?)
+                #if igroup > 0:
+                #    #proj.RebinX(2*igroup)
+                #    pass
+                
+                # Get graph variables
+                x  = 0.5 * (ax.GetBinCenter(pair[0]) + ax.GetBinCenter (pair[1]))
+                wl =       (x - ax.GetBinLowEdge(pair[0]))
+                wh =       (ax.GetBinUpEdge(pair[1]) - x)
+                
+                # Get parameter RMS and assoc. error
+                ROOT.TH1.StatOverflows(False)
+                
+                # Set number of sigmas to use in core RMS calculation
+                sigma = 3
+                
+                par, err, fit = getCoreStd(proj, sigma=sigma, fix_mean=0)
+                par2p5, _, _  = getCoreStd(proj, sigma=2.5, fix_mean=0)
+                par2p0, _, _  = getCoreStd(proj, sigma=2.0, fix_mean=0)
+                
+                syst = max(abs(par2p5 - par), abs(par2p0 - par))
+        
+                print "==> err:", err, "| syst:",syst
+                err = np.sqrt( np.square(err) + np.square(syst) )
+                
+                # Store data point
+                if par > 0.:
+                    xs .append(x)
+                    ys .append(par)
+                    xels.append(wl)
+                    xehs.append(wh)
+                    yes.append(err)
+                    pass
+
+
+                # Projection slice
+                c_proj = ap.canvas(batch=not args.show)
+                rms2sig, err2sig, fit2 = getCoreStd(proj, sigma=2, fix_mean=0)
+                rms3sig, err3sig, fit3 = getCoreStd(proj, sigma=3, fix_mean=0)
+                c_proj.hist(proj)
+                c_proj._bare().cd()
+                fit2.SetLineColor(ROOT.kBlue)
+                fit3.SetLineColor(ROOT.kGreen)
+                c_proj.xline(-2 * rms2sig, text='-2#sigma', linecolor=ROOT.kBlue)
+                c_proj.xline(+2 * rms2sig, text='+2#sigma', linecolor=ROOT.kBlue)
+                c_proj.xline(-3 * rms3sig, text='-3#sigma', linecolor=ROOT.kGreen)
+                c_proj.xline(+3 * rms3sig, text='+3#sigma', linecolor=ROOT.kGreen)
+                fit2.Draw('SAME')
+                fit3.Draw('SAME')
+                c_proj.xlim(-8*rms3sig, +8*rms3sig)
+                c_proj.xlabel(displayNameUnit('d0'))
+                c_proj.ylabel("Tracks")
+                c_proj.text([displayName('r')  + " #in  " + group_names['Rhadron'][igroup],
+                             displayName('pt') + " #in  " + ptgroup_names[ipt],
+                             signal_line('Rhadron') + ' / ' + 'Large radius and standard tracks',
+                             ] +
+                            ["%s #in  [%.1f, %.1f] %s" % (displayName('mu'), 
+                                                          ax.GetBinLowEdge(pair[0]),
+                                                          ax.GetBinUpEdge (pair[1]),
+                                                          displayUnit('mu'))] +
+                            ["Tracks: %d (%d)" % (proj.Integral(), proj.Integral(0, proj.GetXaxis().GetNbins() + 1))],
+                            qualifier=qualifier)
+                
+                if args.save: c_proj.save('plots/%s_RobustnessResolution_slice__%s_vs_%s__%s_%s_%d_%d.pdf' % ('Signal', 'd0', 'mu', 'Both', ptgroup[:-1], igroup, ibin))
+               
+                               
+                pass # end: loop bins
+
+            graph = ROOT.TGraphAsymmErrors(len(xs), 
+                                           array('d', xs),
+                                           array('d', ys),
+                                           array('d', xels),
+                                           array('d', xehs),
+                                           array('d', yes),
+                                           array('d', yes))
+
+            # Create x-axis for graph
+            graph = c_temp.graph(graph)
+            c_temp._bare().cd()
+            ROOT.gPad.Update()
+
+            # Draw graph with x-axis
+            c.graph(graph, linecolor=colours[igroup], markercolor=colours[igroup], markerstyle=4*ipt+20, linewidth=2, linestyle=ipt+1, label=groupname if ipt == 0 else None)
+     
+            pass
+
+        pass
+
+    c.text([signal_line('Rhadron'),
+            "Large radius and standard tracks"],
+           qualifier=qualifier)
+    c.legend(header=displayName('r') + " in:", width=0.28, ymax=0.872)
+    c.legend(header=displayName('pt') + " in:", categories=[(name, {'linestyle': i+1, 'markerstyle': 4*i+20, 'option': 'PL', 'linewidth': 2}) for i, name in enumerate(ptgroup_names)], width=0.28, ymax=0.65)
+    c.padding(0.65)
+    c.logy()
+    c.xlim(0, 40)
+    
+    c.xlabel(displayNameUnit('mu'))
+    c.ylabel(ylabel % displayNameUnit('d0'))
+    
+    # Show/save
+    savename='Rhadron_ResolutionPlots_BothTracks_Signal_res_d0_vs_mu_pTbinned.pdf'
+    if args.show: c.show()
+    if args.save: c.save('plots/' + savename)
+    
+
+
+    # Regular stuff
+    # --------------------------------------------------------------------------
     
     # Loop all combinations of track parameter, truth particle type, signal process, and dependency variable
     for var, t, dep in itertools.product(basic_vars, types, deps):
@@ -136,7 +338,6 @@ def main ():
                     if not (group in comb_projs):
                         comb_projs[group] = list()
                         comb_xs[group] = list()
-                        #comb_ws[group] = list()
                         comb_wls[group] = list()
                         comb_whs[group] = list()
                         pass
@@ -210,13 +411,9 @@ def main ():
                         if dep == 'mu' and igroup > 0:
                             proj.RebinX(2*igroup)
                             pass
-                        #if dep == 'pt' and var == 'qOverP' and igroup > 0:
-                        #    proj.RebinX(2*igroup)
-                        #    pass
                         
                         # Get graph variables
                         x  = 0.5 * (ax.GetBinCenter(pair[0]) + ax.GetBinCenter (pair[1]))
-                        #w =       (ax.GetBinUpEdge(pair[1]) - ax.GetBinLowEdge(pair[0]))
                         wl =       (x - ax.GetBinLowEdge(pair[0]))
                         wh =       (ax.GetBinUpEdge(pair[1]) - x)
                         
@@ -226,7 +423,6 @@ def main ():
                         else:
                             comb_projs[group].append(proj)
                             comb_xs[group].append(x)
-                            #comb_ws[group].append(w)
                             comb_wls[group].append(wl)
                             comb_whs[group].append(wh)
                             pass
@@ -236,84 +432,6 @@ def main ():
                         
                         # Set number of sigmas to use in core RMS calculation
                         sigma = 3
-                        
-                        # Get "core" RMS and assoc. error
-                        def getCoreRMS (h, sigma=5, fix_mean=None):
-                            """ Method for getting the RMS in the central +/- sigma of a distribution. """
-                            
-                            # Check(s)
-                            # ...
-                            
-                            # Book keeping
-                            width     = 0          # RMS from pervious iteration
-                            new_width = h.GetRMS() # RMS from current iteration
-                            it = 0                 # Iteration counter, to avoid endless loop
-                            xmin, xmax = h.GetXaxis().GetXmin(), h.GetXaxis().GetXmax() # Original axis limits
-                            
-                            # Perform iterations
-                            while abs(new_width - width) > 0 and it < 100:
-                                # Initial conditions
-                                if it == 0:
-                                    # Start inside-out, to minimise impact of outliers
-                                    rms = h.GetXaxis().GetBinWidth(1) * 2
-                                    #rms = h.GetRMS() / 10.
-                                    #rms = min(h.GetRMS() / 2., h.GetXaxis().GetBinWidth(1) * 2)
-                                else:
-                                    rms  = h.GetRMS()
-                                    pass
-                                mean  = h.GetMean() if fix_mean is None else fix_mean
-                                
-                                # Update axis limits
-                                axmin = mean - sigma * rms
-                                axmax = mean + sigma * rms
-                                h.SetAxisRange(axmin, axmax)
-                                
-                                # Update RMSs
-                                width      = new_width
-                                new_width = h.GetRMS()
-                                it += 1
-                                pass
-                            
-                            # Store result before zooming out
-                            result = h.GetRMS(), h.GetRMSError(), axmin, axmax
-                            
-                            # Zooming back out
-                            h.SetAxisRange(xmin, xmax)
-                            
-                            # Return
-                            return result
-                        
-                        #par, err, _, _ = getCoreRMS(proj, sigma=sigma, fix_mean=0)
-
-                        # Get "core" std.dev. and assoc. error
-                        def getCoreStd (h, sigma=5, fix_mean=None):
-                            """ Method for getting the std.dev. in the central +/- sigma of a distribution. """
-                            
-                            # Check(s)
-                            # ...
-                            
-                            # Book keeping
-                            old_std = 0          # RMS from pervious iteration
-                            std     = h.GetXaxis().GetBinWidth(1) * 2 # RMS from current iteration
-                            it = 0                 # Iteration counter, to avoid endless loop
-                            fit = ROOT.TF1('fit', 'gaus')
-                            mean  = h.GetMean() if fix_mean is None else fix_mean
-
-                            # Perform iterations
-                            while abs(std - old_std) > 0 and it < 100:
-                                
-                                # Update axis limits
-                                fit.SetRange(mean - sigma * std, mean + sigma * std)
-                                h.Fit('fit', 'QR0')
-                                
-                                # Update RMSs
-                                old_std  = std
-                                std      = fit.GetParameter(2)
-                                it += 1
-                                pass
-                            
-                            # Return
-                            return fit.GetParameter(2), fit.GetParError(2), fit
                         
                         par, err, fit = getCoreStd(proj, sigma=sigma, fix_mean=0)
                         par2p5, _, _  = getCoreStd(proj, sigma=2.5, fix_mean=0)
@@ -330,11 +448,9 @@ def main ():
                         if par > 0.:
                             xs .append(x)
                             ys .append(par)
-                            #xes.append(w / 2.)
                             xels.append(wl / 2.)
                             xehs.append(wh / 2.)
                             yes.append(err)
-                            #yes.append(np.sqrt(np.square(err) + np.square(proj.GetXaxis().GetBinWidth(1))))
                             pass
                         
                         # Easy access
@@ -381,7 +497,6 @@ def main ():
                         graph = ROOT.TGraphAsymmErrors(len(xs), 
                                                        array('d', xs),
                                                        array('d', ys),
-                                                       #array('d', xes),
                                                        array('d', xels),
                                                        array('d', xehs),
                                                        array('d', yes),
@@ -446,18 +561,11 @@ def main ():
             for igroup, (group, name) in enumerate(zip(groups[signal], group_names[signal])):# if signal == 'Rhadron' else groups[:-1]):
                 projs = comb_projs[group]
                 xs = comb_xs[group]
-                #ws = comb_ws[group]
                 wls = comb_wls[group]
                 whs = comb_whs[group]
-                #xes = [w/2. for w in ws]
                 xels = [w for w in wls]
                 xehs = [w for w in whs]
-                #ys, yes, _, _ = zip(*[ getCoreRMS(proj, sigma=sigma, fix_mean=0) for proj in projs ])
                 ys, yes, _ = zip(*[ getCoreStd(proj, sigma=sigma, fix_mean=0) for proj in projs ])
-                #yes = list(yes)
-                #for idx, proj in enumerate(projs):
-                #    yes[idx] = np.sqrt( np.square(yes[idx]) + np.square(proj.GetXaxis().GetBinWidth(1)) )
-                #pass
 
                 ys2p5, _, _  = zip(*[ getCoreStd(proj, sigma=2.5, fix_mean=0) for proj in projs ])
                 ys2p0, _, _  = zip(*[ getCoreStd(proj, sigma=2.0, fix_mean=0) for proj in projs ])
@@ -467,7 +575,6 @@ def main ():
 
                 graph = ROOT.TGraphAsymmErrors(len(xs), array('d', xs),
                                                array('d', ys),
-                                               #array('d', xes),
                                                array('d', xels),
                                                array('d', xehs),
                                                array('d', yes),
