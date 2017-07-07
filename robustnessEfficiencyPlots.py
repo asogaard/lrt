@@ -98,7 +98,7 @@ def main ():
                + (["%s particles" % t] if t != 'Signal' else []),
                qualifier=qualifier)
         c.legend(header=displayName('r') + " in:", categories=[(name, {'linestyle': i+1, 'markerstyle': 4*i+20, 'option': 'PL', 'linewidth': 2}) for i, name in enumerate(names)], width=0.28)
-        c.xlabel("#mu")
+        c.xlabel("#LT#mu#GT")
         c.ylabel("Reconstruction efficiency")
         c.ylim(0, 1.8)
 
@@ -143,7 +143,7 @@ def main ():
                + ["Large radius and standard tracks"],
                qualifier=qualifier)
         c.legend(header=displayName('r') + " in:", width=0.28)
-        c.xlabel("#mu")
+        c.xlabel("#LT#mu#GT")
         c.ylabel("Reconstruction efficiency")
         c.ylim(0, 1.8)
 
