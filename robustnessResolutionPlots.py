@@ -573,7 +573,8 @@ def main ():
                 syst = np.maximum(np.abs(np.array(ys2p5) - np.array(ys)), np.abs(np.array(ys2p0) - np.array(ys)))
                 yes = np.sqrt( np.square(np.array(yes)) + np.square(syst) )
 
-                graph = ROOT.TGraphAsymmErrors(len(xs), array('d', xs),
+                graph = ROOT.TGraphAsymmErrors(len(xs), 
+                                               array('d', xs),
                                                array('d', ys),
                                                array('d', xels),
                                                array('d', xehs),
